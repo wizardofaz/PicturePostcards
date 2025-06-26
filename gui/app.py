@@ -1,4 +1,5 @@
 # Interactive GUI with layout editing and font controls
+# file: gui/app.py
 import sys
 from io import BytesIO
 from gui.movable_text_item import MovableTextItem
@@ -9,7 +10,7 @@ from PyQt5.QtWidgets import (
     QGraphicsScene, QGraphicsView, QGraphicsPixmapItem, QGraphicsTextItem
 )
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QFont
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRectF
 from PIL import Image
 from core.metadata import get_metadata
 from maps.mapbox_static import MAPBOX_STYLES, MapboxStaticMap
@@ -30,6 +31,7 @@ class PhotoMapoApp(QWidget):
 
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene)
+        self.view.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
 
         self.load_button = QPushButton("Load Photo")
         self.load_button.clicked.connect(self.load_photo)
@@ -55,6 +57,7 @@ class PhotoMapoApp(QWidget):
         self.note_item.setTextInteractionFlags(Qt.TextEditorInteraction)
         self.note_item.setDefaultTextColor(Qt.black)
         self.note_item.setFont(QFont("Arial", 14))
+        self.note_item.setFlag(QGraphicsTextItem.ItemIsMovable)
 
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(self.load_button)
@@ -96,9 +99,7 @@ class PhotoMapoApp(QWidget):
             return
 
         metadata = get_metadata(self.image_path)
-        print("Metadata extracted:", metadata)
 
-        # Inject decimal lat/lon if raw GPS fields exist inside GPSInfo
         gps = metadata.get("GPSInfo", {})
         if "GPSLatitude" in gps and "GPSLongitude" in gps:
             def dms_to_decimal(dms, ref):
@@ -122,18 +123,35 @@ class PhotoMapoApp(QWidget):
         zoom = self.zoom_spinner.value()
         style = self.style_combo.currentText()
 
-        # Ensure lat/lon are used as floats, not integers
-        print("Style string passed to Mapbox:", style)
         map_image = MapboxStaticMap(style).get_map_image(lat, lon, zoom=zoom, size=(300, 300))
         metadata["map_image"] = map_image
 
-        composite = create_postcard_image(self.image_path, metadata)
-        pixmap = pil_to_pixmap(composite)
+        photo = Image.open(self.image_path).resize((300, 300))
+        photo_pixmap = pil_to_pixmap(photo)
+        map_pixmap = pil_to_pixmap(map_image)
 
         self.scene.clear()
-        self.scene.addItem(QGraphicsPixmapItem(pixmap))
+
+        self.photo_item = QGraphicsPixmapItem(photo_pixmap)
+        self.photo_item.setFlag(QGraphicsPixmapItem.ItemIsMovable)
+        self.photo_item.setPos(50, 50)
+        self.scene.addItem(self.photo_item)
+
+        self.map_item = QGraphicsPixmapItem(map_pixmap)
+        self.map_item.setFlag(QGraphicsPixmapItem.ItemIsMovable)
+        self.map_item.setPos(400, 50)
+        self.scene.addItem(self.map_item)
+
+        info_text = f"Latitude: {lat:.6f}\nLongitude: {lon:.6f}\nModel: {metadata.get('Model', '')}\nDateTime: {metadata.get('DateTime', '')}"
+        self.info_item = QGraphicsTextItem(info_text)
+        self.info_item.setDefaultTextColor(Qt.black)
+        self.info_item.setFont(QFont("Arial", 10))
+        self.info_item.setFlag(QGraphicsTextItem.ItemIsMovable)
+        self.info_item.setPos(50, 360)
+        self.scene.addItem(self.info_item)
+
         self.scene.addItem(self.note_item)
-        self.note_item.setPos(50, 50)
+        self.note_item.setPos(50, 440)  # below info, still on screen
 
 def launch_app():
     app = QApplication(sys.argv)

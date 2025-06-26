@@ -1,0 +1,6 @@
+PyQt5>=5.15
+Pillow>=9.0
+requests>=2.0
+matplotlib>=3.0
+piexif>=1.1
+pytest>=7.0
