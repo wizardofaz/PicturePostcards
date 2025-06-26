@@ -1,6 +1,8 @@
 TODO
 
+
 outer margins
-user map zoom control
-user map style control
+user map zoom control interactive
+user map style control interactive
 user element placement and layering
+more user selectable EXIF and related elements: direction, compass rose, city/state, place name if available, ...
