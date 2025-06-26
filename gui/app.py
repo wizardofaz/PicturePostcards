@@ -50,142 +50,90 @@ class PhotoMapoApp(QWidget):
 
         self.font_size_spinner = QSpinBox()
         self.font_size_spinner.setRange(8, 48)
-        self.font_size_spinner.setValue(14)
-        self.font_size_spinner.valueChanged.connect(self.update_note_font_size)
+        self.font_size_spinner.setValue(12)
+        self.font_size_spinner.valueChanged.connect(self.update_note_font)
 
-        self.export_button = QPushButton("Export Postcard")
-        self.export_button.clicked.connect(self.export_postcard)
+        top_controls = QHBoxLayout()
+        top_controls.addWidget(self.load_button)
+        top_controls.addWidget(QLabel("Style:"))
+        top_controls.addWidget(self.style_combo)
+        top_controls.addWidget(QLabel("Zoom:"))
+        top_controls.addWidget(self.zoom_spinner)
+        top_controls.addWidget(QLabel("Font:"))
+        top_controls.addWidget(self.font_combo)
+        top_controls.addWidget(QLabel("Size:"))
+        top_controls.addWidget(self.font_size_spinner)
 
-        controls_layout = QHBoxLayout()
-        controls_layout.addWidget(self.load_button)
-        controls_layout.addWidget(QLabel("Style:"))
-        controls_layout.addWidget(self.style_combo)
-        controls_layout.addWidget(QLabel("Zoom:"))
-        controls_layout.addWidget(self.zoom_spinner)
-        controls_layout.addWidget(QLabel("Font:"))
-        controls_layout.addWidget(self.font_combo)
-        controls_layout.addWidget(QLabel("Size:"))
-        controls_layout.addWidget(self.font_size_spinner)
-        controls_layout.addWidget(self.export_button)
+        layout = QVBoxLayout()
+        layout.addLayout(top_controls)
+        layout.addWidget(self.view)
 
-        main_layout = QVBoxLayout()
-        main_layout.addLayout(controls_layout)
-        main_layout.addWidget(self.view)
+        self.setLayout(layout)
 
-        self.setLayout(main_layout)
+        self.map_item = None
+        self.image_item = None
+        self.note_item = None
 
-        self.note_item = MovableTextItem("Your notes here")
-        self.note_item.setTextInteractionFlags(Qt.TextEditorInteraction)
-        self.note_item.setDefaultTextColor(Qt.black)
-        self.note_item.setFont(QFont("Arial", 14))
-        self.note_item.setFlag(QGraphicsTextItem.ItemIsMovable)
+    def load_photo(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Images (*.jpg *.jpeg *.png)")
+        if not path:
+            return
 
-        self.photo_item = QGraphicsPixmapItem()
-        self.photo_item.setFlag(QGraphicsPixmapItem.ItemIsMovable)
-        self.scene.addItem(self.photo_item)
+        self.image_path = path
+        try:
+            self.metadata = get_metadata(path)
+        except Exception as e:
+            QMessageBox.warning(self, "Metadata Error", str(e))
+            return
 
-        self.map_item = QGraphicsPixmapItem()
-        self.map_item.setFlag(QGraphicsPixmapItem.ItemIsMovable)
+        image = Image.open(path)
+        qpix = pil_to_pixmap(image)
+
+        self.scene.clear()
+        self.image_item = QGraphicsPixmapItem(qpix)
+        self.image_item.setFlags(QGraphicsPixmapItem.ItemIsMovable | QGraphicsPixmapItem.ItemIsSelectable)
+        self.scene.addItem(self.image_item)
+
+        style = self.style_combo.currentText()
+        zoom = self.zoom_spinner.value()
+        lat = self.metadata["Latitude"]
+        lon = self.metadata["Longitude"]
+
+        map_img = MapboxStaticMap(style).get_map_image(lat, lon, zoom=zoom, size=(300, 300))
+        self.map_pixmap = pil_to_pixmap(map_img)
+        self.map_item = QGraphicsPixmapItem(self.map_pixmap)
+        self.map_item.setFlags(QGraphicsPixmapItem.ItemIsMovable | QGraphicsPixmapItem.ItemIsSelectable)
+        self.map_item.setOffset(20, 20)
         self.scene.addItem(self.map_item)
 
-        self.info_item = QGraphicsTextItem()
-        self.info_item.setDefaultTextColor(Qt.black)
-        self.info_item.setFont(QFont("Arial", 10))
-        self.info_item.setFlag(QGraphicsTextItem.ItemIsMovable)
-        self.scene.addItem(self.info_item)
-
+        self.note_item = MovableTextItem("Add your notes here")
+        font = QFont(self.font_combo.currentFont())
+        font.setPointSize(self.font_size_spinner.value())
+        self.note_item.setFont(font)
+        self.note_item.setDefaultTextColor(Qt.black)
+        self.note_item.setPos(350, 50)
         self.scene.addItem(self.note_item)
 
-        self.map_pixmap = None  # Track current map pixmap separately
-
-    def update_note_font(self, font):
-        if self.note_item:
-            self.note_item.setFont(font)
-
-    def update_note_font_size(self):
-        if self.note_item:
-            font = self.note_item.font()
-            font.setPointSize(self.font_size_spinner.value())
-            self.note_item.setFont(font)
-
     def update_map_style(self):
-        if hasattr(self, "image_path") and self.map_pixmap:
+        if self.map_item and hasattr(self, "metadata"):
             style = self.style_combo.currentText()
             lat = self.metadata["Latitude"]
             lon = self.metadata["Longitude"]
             zoom = self.zoom_spinner.value()
-            self.map_pixmap = pil_to_pixmap(MapboxStaticMap(style).get_map_image(lat, lon, zoom=zoom, size=(300, 300)))
+            map_img = MapboxStaticMap(style).get_map_image(lat, lon, zoom=zoom, size=(300, 300))
+            self.map_pixmap = pil_to_pixmap(map_img)
             self.map_item.setPixmap(self.map_pixmap)
-
-    def load_photo(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Select an image", "", "Images (*.jpg *.jpeg *.png)")
-        if not file_name:
-            return
-
-        self.image_path = file_name
-        self.refresh_preview()
+            self.view.viewport().update()
 
     def refresh_preview(self):
-        if not hasattr(self, "image_path"):
-            return
+        if hasattr(self, "image_path"):
+            self.update_map_style()
 
-        metadata = get_metadata(self.image_path)
-
-        gps = metadata.get("GPSInfo", {})
-        if "GPSLatitude" in gps and "GPSLongitude" in gps:
-            def dms_to_decimal(dms, ref):
-                degrees, minutes, seconds = dms
-                decimal = degrees + minutes / 60 + seconds / 3600
-                if ref in ['S', 'W']:
-                    decimal = -decimal
-                return decimal
-
-            lat = dms_to_decimal(gps["GPSLatitude"], gps.get("GPSLatitudeRef", "N"))
-            lon = dms_to_decimal(gps["GPSLongitude"], gps.get("GPSLongitudeRef", "E"))
-            metadata["Latitude"] = lat
-            metadata["Longitude"] = lon
-
-        if "Latitude" not in metadata or "Longitude" not in metadata:
-            QMessageBox.warning(self, "No GPS", "No GPS metadata found in image.")
-            return
-
-        self.metadata = metadata
-        lat = metadata["Latitude"]
-        lon = metadata["Longitude"]
-        zoom = self.zoom_spinner.value()
-        style = self.style_combo.currentText()
-
-        self.map_pixmap = pil_to_pixmap(MapboxStaticMap(style).get_map_image(lat, lon, zoom=zoom, size=(300, 300)))
-        photo = Image.open(self.image_path).resize((300, 300))
-        photo_pixmap = pil_to_pixmap(photo)
-
-        self.photo_item.setPixmap(photo_pixmap)
-        self.map_item.setPixmap(self.map_pixmap)
-
-        # Only reposition if they have not been moved
-        if self.photo_item.pos() == QPointF(0, 0):
-            self.photo_item.setPos(50, 50)
-        if self.map_item.pos() == QPointF(0, 0):
-            self.map_item.setPos(400, 50)
-        if self.info_item.toPlainText() == "":
-            self.info_item.setPlainText(f"Latitude: {lat:.6f}\nLongitude: {lon:.6f}\nModel: {metadata.get('Model', '')}\nDateTime: {metadata.get('DateTime', '')}")
-            self.info_item.setPos(50, 360)
-        if self.note_item.toPlainText() == "Your notes here":
-            self.note_item.setPos(50, 440)
-
-    def export_postcard(self):
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save Postcard", "postcard.jpg", "Images (*.jpg *.png)")
-        if not file_name:
-            return
-
-        rect = self.scene.sceneRect()
-        image = QImage(rect.size().toSize(), QImage.Format_ARGB32)
-        image.fill(Qt.white)
-        painter = QPainter(image)
-        self.scene.render(painter, target=QRectF(image.rect()), source=rect)
-        painter.end()
-
-        image.save(file_name)
+    def update_note_font(self):
+        if self.note_item:
+            font = QFont(self.font_combo.currentFont())
+            font.setPointSize(self.font_size_spinner.value())
+            self.note_item.setFont(font)
 
 def launch_app():
     app = QApplication(sys.argv)
