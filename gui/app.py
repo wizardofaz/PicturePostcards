@@ -94,7 +94,8 @@ class PhotoMapoApp(QWidget):
         self.image_item.setFlags(QGraphicsPixmapItem.ItemIsMovable | QGraphicsPixmapItem.ItemIsSelectable)
         self.scene.addItem(self.image_item)
 
-        style = self.style_combo.currentText()
+        style_label = self.style_combo.currentText()
+        style = MAPBOX_STYLES[style_label]
         zoom = self.zoom_spinner.value()
         lat = self.metadata["Latitude"]
         lon = self.metadata["Longitude"]
@@ -116,7 +117,9 @@ class PhotoMapoApp(QWidget):
 
     def update_map_style(self):
         if self.map_item and hasattr(self, "metadata"):
-            style = self.style_combo.currentText()
+            style_label = self.style_combo.currentText()
+            style = MAPBOX_STYLES[style_label]
+            print(f"[DEBUG] Map style changed to: {style}")  # diagnostic
             lat = self.metadata["Latitude"]
             lon = self.metadata["Longitude"]
             zoom = self.zoom_spinner.value()
