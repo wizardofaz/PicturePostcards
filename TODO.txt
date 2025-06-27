@@ -1,6 +1,10 @@
 TODO
 
-
+image and map should be sizeable but keep aspect ratio.
+control over front/back arrangement
+nice background
+template collection
+allow rotating (tilting) image
 outer margins
 user map zoom control interactive
 user map style control interactive
